@@ -15,6 +15,7 @@
     exactly one ledger fact."
   (:require [clojure.test :refer [deftest is testing]]
             [langgraph.graph :as g]
+            [tyremfg.robotics :as robotics]
             [tyremfg.store :as store]
             [tyremfg.operation :as op]))
 
@@ -208,6 +209,44 @@
       (let [r2 (approve! actor "t14")]
         (is (= :commit (get-in r2 [:state :disposition])))
         (is (= 1 (count (store/shipment-history db))))))))
+
+(deftest robotics-simulation-missing-is-held-and-unoverridable
+  (testing "coordinating a shipment against a verified/registered/within-quantity batch whose bead-wire pull-out mission never ran -> HOLD (ADR-2607999700)"
+    (let [db (store/mem-store)
+          _ (store/with-batches db {"batch-noqa" {:id "batch-noqa" :tyre-category :passenger
+                                                   :quantity-units 1000.0 :shipped-units 0.0
+                                                   :verified? true :registered? true}})
+          actor (op/build db)
+          res (exec-op actor "tr1"
+                    {:op :coordinate-shipment :effect :propose :subject "ship-r1"
+                     :value {:batch-id "batch-noqa" :units 10.0
+                             :destination "buyer-yard-test"}}
+                    coordinator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (not= :interrupted (:status res)))
+      (is (some #{:robotics-simulation-missing} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/shipment-history db))))))
+
+(deftest robotics-simulation-out-of-tolerance-is-held-even-when-self-reported-verified
+  (testing "independent recheck catches an implausibly light :bead-mass-kg even though :robotics-sim-verified? was seeded true -- the mission's own self-report is never trusted (ADR-2607999700)"
+    (let [light-bead {:bead-mass-kg 0.3}
+          db (store/mem-store)
+          _ (store/with-batches db {"batch-lightbead"
+                                     (merge {:id "batch-lightbead" :tyre-category :passenger
+                                             :quantity-units 1000.0 :shipped-units 0.0
+                                             :verified? true :registered? true
+                                             :bead-mass-kg 0.3 :robotics-sim-verified? true}
+                                            (robotics/bead-pullout-telemetry-for light-bead))})
+          actor (op/build db)
+          res (exec-op actor "tr2"
+                    {:op :coordinate-shipment :effect :propose :subject "ship-r2"
+                     :value {:batch-id "batch-lightbead" :units 10.0
+                             :destination "buyer-yard-test"}}
+                    coordinator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (not= :interrupted (:status res)))
+      (is (some #{:robotics-simulation-out-of-tolerance} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/shipment-history db))))))
 
 (deftest every-decision-leaves-one-ledger-fact
   (testing "write-only-through-ledger: N settled operations -> N ledger facts"
