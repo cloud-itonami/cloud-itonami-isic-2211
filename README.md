@@ -55,11 +55,13 @@ Classic governed-actor pattern (`tyremfg.operation/build`, a langgraph-clj State
      - No fabricated `:tyre-category` value on a production-batch patch
      - No physically implausible `:load-index` value on a production-batch patch
      - No physically implausible `:defect-rate-percent` value on a production-batch patch
+     - A batch's own recorded bead-wire pull-out/anchorage force must clear its real minimum retention floor before any shipment coordination (ADR-2607999700, independently re-derived from a REAL `physics-2d` simulation — see Robotics below; ADDITIVE alongside, never a replacement for, the verified/registered gate)
    - ESCALATE (always human sign-off, overridable by a human):
      - `:flag-safety-concern` always escalates, regardless of confidence
      - Low-confidence proposals
 3. **`tyremfg.phase`** (Phase 0->3 rollout): `:schedule-maintenance`/`:flag-safety-concern`/`:coordinate-shipment` are NEVER in any phase's `:auto` set (permanent, matching the governor's own posture); only `:log-production-batch` may auto-commit at phase 3 when clean
 4. **`tyremfg.store`** (append-only audit ledger + SSoT): a single `MemStore` backend behind a `Store` protocol (see ns docstring for why a second Datomic-backed backend is out of scope for this build)
+5. **`tyremfg.robotics`** (ADR-2607999700): a real, time-stepped `physics-2d` rigid-body simulation of a bead-wire pull-out/bead-unseating-resistance test — closes the gap that `:verified?`/`:registered?` were purely self-reported checklist booleans with no engineering-simulation backing. `tyremfg.governor` independently re-derives the batch's own recorded `:sim-bead-pullout-force-n` against a real minimum retention floor before `:coordinate-shipment` may commit, never trusting the mission's own stored `:passed?` verdict. Honest scope: this models a real pull-apart event (reframed as an approach against a virtual limit-boundary, since `physics-2d` only natively resolves approaching/colliding bodies — see ns docstring); it does NOT attempt tyre burst/inflation-pressure testing, a pressure-vessel/membrane physics problem this rigid-body engine is a genuinely bad fit for.
 
 ## Development
 
@@ -79,7 +81,7 @@ clojure -M:lint
 
 ## Status
 
-`:implemented` — `governor.cljc`/`store.cljc`/`advisor.cljc`/`registry.cljc` + `deps.edn` complete the module set; tests green, demo runnable, langgraph-clj integration verified.
+`:implemented` — `governor.cljc`/`store.cljc`/`advisor.cljc`/`registry.cljc`/`robotics.cljc` + `deps.edn` complete the module set; tests green, demo runnable, langgraph-clj integration verified.
 
 ## License
 

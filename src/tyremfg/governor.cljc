@@ -120,7 +120,38 @@
                                        truth from the batch's own
                                        permanent fields, never a
                                        self-reported quantity claim.
-   10. Invalid tyre-category       -- for `:log-production-batch`, if
+   10. Robot bead-wire pull-out
+       simulation missing or
+       independently out-of-
+       tolerance (ADR-2607999700)   -- for `:coordinate-shipment`, has
+                                       the robot bead-wire pull-out
+                                       verification mission
+                                       (`tyremfg.robotics`) actually run
+                                       and been recorded on the batch
+                                       (`:robotics-sim-verified?`)? AND
+                                       INDEPENDENTLY recompute whether
+                                       the batch's own recorded REAL
+                                       `physics-2d`-simulated bead-wire
+                                       pull-out/bead-unseating-
+                                       resistance telemetry
+                                       (`:sim-bead-pullout-force-n`)
+                                       falls below the real minimum
+                                       required anchorage force
+                                       (`tyremfg.robotics/simulation-
+                                       out-of-tolerance?`), ignoring
+                                       whatever :passed? verdict the
+                                       mission run itself stored --
+                                       never trusts the advisor's own
+                                       report, the SAME 'ground truth,
+                                       not self-report' discipline
+                                       check 8/9 above use for batch
+                                       verification/shipment quantity.
+                                       ADDITIVE: an UNRELATED real-world
+                                       QA domain (bead-wire anchorage
+                                       strength, not batch registration/
+                                       quantity), folded alongside
+                                       (never replacing) checks 8/9.
+   11. Invalid tyre-category       -- for `:log-production-batch`, if
                                        the patch declares a
                                        `:tyre-category` outside the
                                        closed known set
@@ -129,7 +160,7 @@
                                        record is rejected rather than
                                        let a fabricated category
                                        through.
-   11. Invalid load-index          -- for `:log-production-batch`, if
+   12. Invalid load-index          -- for `:log-production-batch`, if
                                        the patch declares a
                                        `:load-index` that is not a
                                        physically plausible ETRTO/DOT
@@ -138,7 +169,7 @@
                                        is rejected rather than let a
                                        fabricated/sensor-error rating
                                        through.
-   12. Invalid defect-rate         -- for `:log-production-batch`, if
+   13. Invalid defect-rate         -- for `:log-production-batch`, if
                                        the patch declares a
                                        `:defect-rate-percent` that is
                                        not a physically plausible
@@ -147,7 +178,7 @@
                                        record is rejected rather than
                                        let fabricated/sensor-error data
                                        through.
-   13. Confidence floor / high-
+   14. Confidence floor / high-
        stakes gate                  -- LLM confidence below threshold,
                                        OR the proposal's own `:stake` is
                                        in `high-stakes`
@@ -157,6 +188,7 @@
                                        plant supervisor. SOFT: the
                                        human may approve."
   (:require [tyremfg.registry :as registry]
+            [tyremfg.robotics :as robotics]
             [tyremfg.store :as store]))
 
 (def confidence-floor 0.6)
@@ -290,6 +322,33 @@
                        "本)を、既存出荷実績(" (:shipped-units b 0.0)
                        "本)+今回申請(" units "本)が超過")}]))))
 
+(defn- robotics-simulation-violations
+  "For `:coordinate-shipment` (ADR-2607999700): HARD hold if the robot
+  bead-wire pull-out verification mission (`tyremfg.robotics`) never
+  ran and was recorded on the batch (`:robotics-sim-verified?`), OR if
+  it did but an INDEPENDENT recompute of the batch's own recorded REAL
+  `physics-2d`-simulated bead-wire pull-out force telemetry
+  (`:sim-bead-pullout-force-n`, `tyremfg.robotics/simulation-out-of-
+  tolerance?`) says out-of-tolerance right now -- never trusts the
+  mission's own stored :passed? verdict alone, the same discipline
+  `batch-not-verified-violations`/`shipment-quantity-exceeded-
+  violations` above use. ADDITIVE: an UNRELATED real-world QA domain
+  (bead-wire anchorage strength, not batch registration/quantity),
+  never a replacement for either check above."
+  [{:keys [op]} proposal st]
+  (when (= op :coordinate-shipment)
+    (let [batch-id (:batch-id (:value proposal))
+          b (and batch-id (store/batch st batch-id))]
+      (cond
+        (not (:robotics-sim-verified? b))
+        [{:rule :robotics-simulation-missing
+          :detail (str batch-id " のビードワイヤー引抜き検証ミッションが未実行・未合格")}]
+
+        (robotics/simulation-out-of-tolerance? b)
+        [{:rule :robotics-simulation-out-of-tolerance
+          :detail (str batch-id " の実測ビードワイヤー引抜き力(" (:sim-bead-pullout-force-n b)
+                       "N)が独立再検証で許容下限(" robotics/min-bead-pullout-force-n "N)を下回る")}]))))
+
 (defn- invalid-tyre-category-violations
   "For `:log-production-batch`, if the patch declares a
   `:tyre-category` outside the closed known set, reject rather than
@@ -338,6 +397,7 @@
                            (already-scheduled-violations request st)
                            (batch-not-verified-violations request proposal st)
                            (shipment-quantity-exceeded-violations request proposal st)
+                           (robotics-simulation-violations request proposal st)
                            (invalid-tyre-category-violations request proposal)
                            (invalid-load-index-violations request proposal)
                            (invalid-defect-rate-violations request proposal)))

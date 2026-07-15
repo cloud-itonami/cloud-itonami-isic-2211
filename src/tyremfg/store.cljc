@@ -25,6 +25,12 @@
                              plant's production ledger;
                              `:shipped-units` tracks the batch's own
                              cumulative-shipped ground truth.
+                             `:bead-mass-kg`/`:robotics-sim-verified?`/
+                             `:sim-bead-pullout-force-n` (ADR-2607999700)
+                             are the REAL `tyremfg.robotics`-simulated
+                             bead-wire pull-out QA telemetry, ADDITIVE
+                             alongside `:verified?`/`:registered?` --
+                             see `tyremfg.robotics` ns docstring.
     - `equipment`         -- a tyre-building/curing-line unit's own
                              record. `:verified?`/`:registered?` track
                              whether it has actually been inspected/
@@ -54,7 +60,8 @@
   concern was flagged' is always a query over an immutable log -- the
   audit trail a plant owner or downstream buyer trusting this
   coordinator needs."
-  (:require [tyremfg.registry :as registry]))
+  (:require [tyremfg.registry :as registry]
+            [tyremfg.robotics :as robotics]))
 
 (defprotocol Store
   (batch [s id])
@@ -79,19 +86,37 @@
 
 ;; ----------------------------- demo/sample data -----------------------------
 
+(defn- with-bead-pullout-telemetry
+  "Layers REAL `tyremfg.robotics`-simulated bead-wire pull-out-force
+  telemetry (ADR-2607999700, mirrors `deviceassembly.store/with-
+  connector-mating-telemetry` / `autoparts.store/with-proof-load-
+  telemetry`) onto a demo batch's base fields -- `tyremfg.robotics/
+  bead-pullout-telemetry-for` actually runs `run-bead-pullout-test`'s
+  `physics-2d`-stepped simulation for this batch's own
+  `:bead-mass-kg`, so even the 'already on file' seed data (as if from
+  an earlier real bead-wire pull-out QA report) is genuinely
+  simulation-derived, never hand-typed doubles."
+  [base]
+  (merge base (select-keys (robotics/bead-pullout-telemetry-for base)
+                           [:sim-bead-pullout-force-n :sim-peak-decel-mps2])))
+
 (defn- sample-batches []
-  {"batch-001" {:id "batch-001" :tyre-category :passenger
-                :tyre-size "205/55R16" :load-index 91
-                :quantity-units 5000.0 :defect-rate-percent 1.1
-                :verified? true :registered? true
-                :shipped-units 1000.0
-                :last-assessed "2026-06-01"}
-   "batch-002" {:id "batch-002" :tyre-category :truck-bus
-                :tyre-size "295/80R22.5" :load-index 152
-                :quantity-units 800.0 :defect-rate-percent 0.4
-                :verified? true :registered? true
-                :shipped-units 750.0
-                :last-assessed "2026-06-01"}
+  {"batch-001" (with-bead-pullout-telemetry
+                {:id "batch-001" :tyre-category :passenger
+                 :tyre-size "205/55R16" :load-index 91
+                 :quantity-units 5000.0 :defect-rate-percent 1.1
+                 :verified? true :registered? true
+                 :shipped-units 1000.0
+                 :bead-mass-kg 7.2 :robotics-sim-verified? true
+                 :last-assessed "2026-06-01"})
+   "batch-002" (with-bead-pullout-telemetry
+                {:id "batch-002" :tyre-category :truck-bus
+                 :tyre-size "295/80R22.5" :load-index 152
+                 :quantity-units 800.0 :defect-rate-percent 0.4
+                 :verified? true :registered? true
+                 :shipped-units 750.0
+                 :bead-mass-kg 9.0 :robotics-sim-verified? true
+                 :last-assessed "2026-06-01"})
    "batch-003" {:id "batch-003" :tyre-category :light-truck
                 :tyre-size "225/75R16" :load-index 115
                 :quantity-units 6000.0 :defect-rate-percent 2.3
