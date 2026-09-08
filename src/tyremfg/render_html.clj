@@ -23,7 +23,7 @@
   Usage: `clojure -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [tyremfg.store :as store]
             [tyremfg.operation :as op]
             [langgraph.graph :as g]))
