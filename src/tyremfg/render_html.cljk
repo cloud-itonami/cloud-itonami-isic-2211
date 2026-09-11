@@ -7,7 +7,7 @@
   no generator at all. This namespace drives the REAL actor stack
   (`tyremfg.operation` -> `tyremfg.governor` -> `tyremfg.store`) through
   a scenario adapted from this repo's own `tyremfg.sim` demo driver
-  (`clojure -M:dev:run`, confirmed by running it directly to use ids
+  (`kbb -M:dev:run`, confirmed by running it directly to use ids
   that DO match `tyremfg.store/sample-data!`'s real seed data --
   batch-001/002/003, builder-001, curing-press-002, mnt-1/2/3, ship-1/
   2/3 -- and to produce the exact dispositions/violation rules quoted
@@ -20,7 +20,7 @@
   content, byte-identical across reruns against the same seed (verify
   by diffing two consecutive runs before shipping).
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
             [kotoba.lang.text :as str]
