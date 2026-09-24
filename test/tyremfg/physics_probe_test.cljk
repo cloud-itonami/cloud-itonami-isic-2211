@@ -1,0 +1,38 @@
+(ns tyremfg.physics-probe-test
+  "The probe is the bot's only source of \"measured\"; these pin that it
+  measures (every run numeric, count = expected), that the numbers come
+  from the simulation (the derived boundary really straddles the floor),
+  and that a changed solver would show."
+  (:require [clojure.test :refer [deftest is testing]]
+            [tyremfg.physics-probe :as probe]
+            [tyremfg.robotics :as robotics]))
+
+(deftest probe-measures-every-run
+  (let [p (probe/probe)]
+    (is (= "itonami.physical-ai.probe.v1" (:physics-probe/schema p)))
+    (is (pos? (:count p)))
+    (is (= (:count p) (:expected p) (count (:runs p))))
+    (testing "every run carries a numeric force and tick count from the trajectory"
+      (doseq [r (:runs p)]
+        (is (number? (get-in r [:quantities :sim-bead-pullout-force-n])))
+        (is (pos? (get-in r [:quantities :ticks])))))))
+
+(deftest force-rises-with-mass-across-the-sweep
+  (let [fs (map #(get-in % [:quantities :sim-bead-pullout-force-n]) (:runs (probe/probe)))]
+    (is (apply < fs))))
+
+(deftest sweep-straddles-the-floor
+  (let [outs (map :out-of-tolerance? (:runs (probe/probe)))]
+    (is (true? (first outs)))
+    (is (false? (last outs)))))
+
+(deftest derived-boundary-straddles-the-floor
+  (let [m (probe/min-passing-mass-kg)
+        force (fn [kg] (:sim-bead-pullout-force-n (robotics/bead-pullout-telemetry-for {:bead-mass-kg kg})))]
+    (is (number? m))
+    (testing "at the boundary the force reaches the floor; 1% lighter it does not"
+      (is (>= (force m) robotics/min-bead-pullout-force-n))
+      (is (< (force (* 0.99 m)) robotics/min-bead-pullout-force-n)))))
+
+(deftest bracket-that-does-not-straddle-answers-nil
+  (is (nil? (probe/min-passing-mass-kg 10.0 50.0 10))))

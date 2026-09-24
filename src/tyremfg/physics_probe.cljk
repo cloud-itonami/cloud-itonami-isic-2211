@@ -1,0 +1,77 @@
+(ns tyremfg.physics-probe
+  "The physical-AI bot's measurement: run this actor's REAL `physics-2d`
+  bead-wire pull-out simulation (`tyremfg.robotics/run-bead-pullout-test`)
+  over a fixed sweep and print ONE EDN map of the physical quantities it
+  computed.
+
+    kbb -M:dev:physics
+
+  This is what the resident bot (hermes/profiles/physai-isic-2211/SOUL.md)
+  reads every tick. Every number is derived from a time-stepped trajectory
+  by `tyremfg.robotics`, never typed in. Schema
+  `itonami.physical-ai.probe.v1`:
+
+    {:physics-probe/schema \"itonami.physical-ai.probe.v1\"
+     :repo :procedure :solver
+     :runs    [{:input {...} :quantities {...} :out-of-tolerance? bool} ...]
+     :derived {...}  ; quantities computed ACROSS runs
+     :count n :expected n}
+
+  `:count` is an evidence floor: 0 means \"could not measure\", never
+  \"nothing out of tolerance\". Exit 0 when every run produced numbers,
+  2 when any run did not."
+  (:require [tyremfg.robotics :as robotics]))
+
+(def schema "itonami.physical-ai.probe.v1")
+
+(def sweep-masses-kg
+  "Effective participating masses (pull jaw + engaged bead bundle) swept
+  each tick. 3.0 / 7.2 / 9.0 kg are the fixtures the robotics tests pin;
+  1.0 and 5.0 bracket the pass/fail floor from below and just above."
+  [1.0 3.0 5.0 7.2 9.0])
+
+(defn- force-at [mass-kg]
+  (:sim-bead-pullout-force-n (robotics/bead-pullout-telemetry-for {:bead-mass-kg mass-kg})))
+
+(defn- run-one [mass-kg]
+  (let [t (robotics/bead-pullout-telemetry-for {:bead-mass-kg mass-kg})]
+    {:input {:bead-mass-kg mass-kg}
+     :quantities t
+     :out-of-tolerance? (robotics/bead-pullout-force-out-of-tolerance? t)}))
+
+(defn min-passing-mass-kg
+  "Smallest effective mass whose simulated peak pull-out force reaches
+  `robotics/min-bead-pullout-force-n`, by bisection over the REAL
+  simulation (force is monotone in mass at fixed speed/travel -- pinned
+  by `robotics-test`). nil when the bracket does not straddle the floor."
+  ([] (min-passing-mass-kg 0.01 50.0 40))
+  ([lo hi iters]
+   (let [floor robotics/min-bead-pullout-force-n]
+     (when (and (< (force-at lo) floor) (>= (force-at hi) floor))
+       (loop [lo lo hi hi i 0]
+         (if (>= i iters)
+           hi
+           (let [mid (/ (+ lo hi) 2.0)]
+             (if (>= (force-at mid) floor)
+               (recur lo mid (inc i))
+               (recur mid hi (inc i))))))))))
+
+(defn probe []
+  (let [runs (mapv run-one sweep-masses-kg)
+        numeric? (fn [r] (number? (get-in r [:quantities :sim-bead-pullout-force-n])))]
+    {:physics-probe/schema schema
+     :repo "cloud-itonami/cloud-itonami-isic-2211"
+     :procedure "Tyre bead-wire bundle pull-out / bead-anchorage retention test (robot bead pull-out cell)"
+     :solver "physics-2d/world-step"
+     :runs runs
+     :derived {:min-bead-pullout-force-n robotics/min-bead-pullout-force-n
+               :min-passing-bead-mass-kg (min-passing-mass-kg)}
+     :count (count (filter numeric? runs))
+     :expected (count sweep-masses-kg)}))
+
+(defn -main [& _]
+  (let [p (probe)]
+    (prn p)
+    (when-not (= (:count p) (:expected p))
+      #?(:cljs (set! (.-exitCode js/process) 2)
+         :default (System/exit 2)))))
