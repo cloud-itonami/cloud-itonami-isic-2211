@@ -12,7 +12,7 @@
   `:registered?` batch checklist, proving this ADR is purely
   additive (see `tyremfg.governor-contract-test` for the governor-level
   HARD-hold wiring)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [tyremfg.robotics :as robotics]))
 
 (defn- abs* [x] (if (neg? x) (- x) x))
